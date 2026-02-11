@@ -1,0 +1,429 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Undercover</title>
+
+<style>
+:root{
+  --bg:#0f1220;
+  --card:#1c1f3a;
+  --accent:#6c7cff;
+  --text:#ffffff;
+}
+
+*{box-sizing:border-box;font-family:system-ui}
+
+body{
+  margin:0;
+  background:var(--bg);
+  color:var(--text);
+  display:flex;
+  justify-content:center;
+  min-height:100vh;
+}
+
+.hidden{display:none}
+
+.app{
+  width:100%;
+  max-width:420px;
+  padding:20px;
+  text-align:center;
+}
+
+h1,h2{margin:10px 0}
+
+select,button,input{
+  width:100%;
+  padding:12px;
+  margin:10px 0;
+  border:none;
+  border-radius:14px;
+  font-size:16px;
+}
+
+button{
+  background:var(--accent);
+  color:white;
+  font-weight:bold;
+}
+
+.card{
+  background:var(--card);
+  border-radius:20px;
+  padding:30px;
+  margin:20px 0;
+  animation:fadeUp .4s ease;
+}
+
+.cards{
+  display:grid;
+  grid-template-columns:repeat(2,1fr);
+  gap:15px;
+  margin-top:20px;
+}
+
+.player-card{
+  background:var(--card);
+  border-radius:18px;
+  padding:15px;
+  font-size:18px;
+  transition:.2s;
+}
+
+.player-card span{
+  font-size:26px;
+  display:block;
+}
+
+.player-card.clickable:hover{
+  transform:scale(1.05);
+  box-shadow:0 0 15px rgba(255,255,255,.2);
+}
+
+@keyframes fadeUp{
+  from{opacity:0;transform:translateY(20px)}
+  to{opacity:1;transform:none}
+}
+
+.confetti{
+  position:fixed;
+  inset:0;
+  pointer-events:none;
+}
+</style >
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#6c7cff">
+</head>
+
+<script>
+if ("serviceWorker" in navigator) {
+  navigator.serviceWorker.register("service-worker.js")
+    .then(() => console.log("Service Worker enregistré"))
+    .catch(err => console.log("Erreur SW:", err));
+}
+</script>
+
+<body>
+<div class="app">
+
+<h1>🕵️ Undercover</h1>
+
+<!-- CONFIG -->
+<div id="config" class="card">
+  <select id="playerCount">
+    <option value="3">3 joueurs</option>
+    <option value="4">4 joueurs</option>
+    <option value="5">5 joueurs</option>
+    <option value="6">6 joueurs</option>
+    <option value="7">7 joueurs</option>
+    <option value="8">8 joueurs</option>
+    <option value="9">9 joueurs</option>
+    <option value="10">10 joueurs</option>
+    <option value="11">11 joueurs</option>
+  </select>
+
+  <select id="specialRole" class="hidden">
+    <option value="undercover">1 Undercover</option>
+    <option value="mrwhite">1 Mr White</option>
+  </select>
+
+  <select id="undercoverCount"></select>
+
+  <button onclick="startGame()">Lancer la partie</button>
+</div>
+
+<!-- GAME -->
+<div id="game" class="hidden card">
+  <h2 id="turnTitle"></h2>
+  <div id="card" onclick="reveal()">Appuie pour révéler</div>
+  <button id="nextBtn" class="hidden" onclick="nextPlayer()">Suivant</button>
+</div>
+
+<!-- ORDER / VOTE -->
+<div id="order" class="hidden card">
+  <h2 id="orderTitle">🔁 Ordre de passage</h2>
+  <div id="orderCards" class="cards"></div>
+  <button id="orderBtn" onclick="enableVote()">Passer au vote</button>
+</div>
+
+<div id="mrwhite" class="hidden card">
+  <h2>🕶️ Mr White</h2>
+  <p>Devine le mot !</p>
+  <input id="guess" placeholder="Écris le mot ici">
+  <button onclick="checkGuess()">Valider</button>
+</div>
+
+<div id="confetti" class="confetti"></div>
+
+<!-- RESULT -->
+<div id="result" class="hidden card"></div>
+
+</div>
+
+<script>
+const words = [
+  ["Chat","Chien"],
+  ["Pizza","Burger"],
+  ["Plage","Piscine"],
+  ["Avion","Train"],
+  ["Soleil","Lune"],
+  ["Café","Thé"],
+  ["Voiture","Moto"],
+  ["Forêt","Jungle"],
+  ["Neige","Glace"],
+  ["Téléphone","Tablette"],
+
+  ["Film","Série"],
+  ["Roi","Prince"],
+  ["Fromage","Yaourt"],
+  ["Montagne","Colline"],
+  ["Bière","Vin"],
+  ["Foot","Rugby"],
+  ["Hôpital","Clinique"],
+  ["Police","Gendarmerie"],
+  ["Ordinateur","Clavier"],
+  ["Internet","WiFi"],
+
+  ["École","Université"],
+  ["Prof","Maître"],
+  ["Livre","Magazine"],
+  ["Stylo","Crayon"],
+  ["Bateau","Navire"],
+  ["Poisson","Requin"],
+  ["Pomme","Poire"],
+  ["Banane","Mangue"],
+  ["Chocolat","Bonbon"],
+  ["Dormir","Sieste"],
+
+  ["Danse","Chant"],
+  ["Rap","Pop"],
+  ["Netflix","YouTube"],
+  ["Instagram","TikTok"],
+  ["Paris","Londres"],
+  ["France","Espagne"],
+  ["Hiver","Automne"],
+  ["Matin","Soir"],
+  ["Rire","Sourire"],
+  ["Cri","Chuchotement"],
+
+  ["Feu","Flamme"],
+  ["Eau","Pluie"],
+  ["Vent","Tempête"],
+  ["Mer","Océan"],
+  ["Lac","Rivière"],
+  ["Désert","Savane"],
+  ["Île","Archipel"],
+  ["Pont","Tunnel"],
+  ["Maison","Appartement"],
+  ["Chambre","Salon"],
+
+  ["Pain","Brioche"],
+  ["Gâteau","Tarte"],
+  ["Sucre","Miel"],
+  ["Sel","Poivre"],
+  ["Four","Micro-ondes"],
+  ["Couteau","Fourchette"],
+  ["Assiette","Bol"],
+  ["Verre","Tasse"]
+];
+
+let players=[],roles=[],alive=[],pair,index=0,revealed=false;
+let speakingOrder=[];
+
+const pc=playerCount,uc=undercoverCount,sr=specialRole;
+
+pc.onchange=()=>{
+  uc.innerHTML="";
+  if(pc.value==3||pc.value==4){
+    sr.classList.remove("hidden");
+    uc.classList.add("hidden");
+    uc.innerHTML="<option>1</option>";
+  }else{
+    sr.classList.add("hidden");
+    uc.classList.remove("hidden");
+    for(let i=1;i<=pc.value-2;i++)uc.innerHTML+=`<option>${i}</option>`;
+  }
+};
+pc.onchange();
+
+function startGame(){
+  const t=+pc.value,u=+uc.value;
+  roles=[];
+  if(t<=4){
+    roles=[...Array(t-1).fill("Civil"),sr.value=="mrwhite"?"Mr White":"Undercover"];
+  }else{
+    roles=[...Array(t-u-1).fill("Civil"),...Array(u).fill("Undercover"),"Mr White"];
+  }
+  roles.sort(()=>Math.random()-.5);
+  players=roles.map((_,i)=>"Joueur "+(i+1));
+  alive=[...players];
+  pair=words[Math.floor(Math.random()*words.length)];
+  index=0;
+  config.classList.add("hidden");
+  game.classList.remove("hidden");
+  showPlayer();
+}
+
+function showPlayer(){
+  revealed=false;
+  turnTitle.textContent=players[index];
+  card.textContent="Appuie pour révéler";
+  nextBtn.classList.add("hidden");
+}
+
+function reveal(){
+  if(revealed)return;
+  revealed=true;
+  card.textContent=roles[index]=="Civil"?pair[0]:
+                   roles[index]=="Undercover"?pair[1]:"❓";
+  nextBtn.classList.remove("hidden");
+}
+
+function nextPlayer(){
+  index++;
+  if(index<players.length)showPlayer();
+  else{
+    game.classList.add("hidden");
+    generateOrder();
+    showOrder();
+  }
+}
+
+function generateOrder(){
+  speakingOrder=[...alive].sort(()=>Math.random()-.5);
+  const mw=players[roles.indexOf("Mr White")];
+  if(mw){
+    let i=speakingOrder.indexOf(mw);
+    if(i<2)[speakingOrder[i],speakingOrder[2]]=[speakingOrder[2],speakingOrder[i]];
+  }
+}
+
+function showOrder(){
+  orderCards.innerHTML="";
+  speakingOrder.forEach((p,i)=>{
+    orderCards.innerHTML+=`<div class="player-card"><span>${i+1}</span>${p}</div>`;
+  });
+  order.classList.remove("hidden");
+}
+
+function enableVote(){
+  orderTitle.textContent="❓ Qui éliminer ?";
+  orderBtn.classList.add("hidden");
+  [...orderCards.children].forEach((c,i)=>{
+    c.classList.add("clickable");
+    c.onclick=()=>eliminate(speakingOrder[i]);
+  });
+}
+
+function eliminate(player){
+
+  const indexPlayer = players.indexOf(player);
+  const role = roles[indexPlayer];
+
+  // Retirer le joueur des vivants
+  alive = alive.filter(p => p !== player);
+
+  // Vérifier victoire AVANT de continuer
+  if(checkWin()) return;
+
+  // --- CIVIL ---
+  if(role === "Civil"){
+    overlayMsg("❌ Civil éliminé", ohno);
+    setTimeout(()=>{
+      generateOrder();
+      showOrder();
+    },3000);
+  }
+
+  // --- UNDERCOVER ---
+  if(role === "Undercover"){
+    overlayMsg("😈 Undercover éliminé", yeah);
+    setTimeout(()=>{
+      generateOrder();
+      showOrder();
+    },3000);
+  }
+
+  // --- MR WHITE ---
+  if(role === "Mr White"){
+    mrwhite.classList.remove("hidden");
+    mystery.play();
+  }
+}
+
+// Jouer sons
+const ohno = new Audio("ohno.mp3");
+const yeah = new Audio("yeah.mp3");
+const mystery = new Audio("mystery.mp3");
+
+// Afficher confettis simples
+function showConfetti() {
+  const container = document.getElementById("confetti");
+  container.innerHTML = "";
+  for(let i=0;i<100;i++){
+    const c = document.createElement("div");
+    c.style.position="absolute";
+    c.style.width=c.style.height="8px";
+    c.style.background=["#ff3c3c","#3cff62","#3c6cff","#fffc3c"][Math.floor(Math.random()*4)];
+    c.style.left=Math.random()*100+"%";
+    c.style.top=Math.random()*100+"%";
+    c.style.opacity=Math.random();
+    c.style.transform=`rotate(${Math.random()*360}deg)`;
+    container.appendChild(c);
+    c.animate([{transform:`translateY(0) rotate(0deg)`},{transform:`translateY(300px) rotate(360deg)`}],{duration:2000+Math.random()*2000,iterations:1});
+  }
+  setTimeout(()=>container.innerHTML="",3000);
+}
+
+// Quand on clique sur Mr White
+function eliminate(player){
+  const role = roles[players.indexOf(player)];
+  alive = alive.filter(x=>x!=
+function checkGuess(){
+  const input = document.getElementById("guess");
+  if(input.value.trim().toLowerCase() === pair[0].toLowerCase()){
+    mrwhite.classList.add("hidden");
+    result.classList.remove("hidden");
+    result.innerHTML=`<h2>🎩 Mister White a gagné !</h2>`;
+    showConfetti();
+    yeah.play();
+    result.innerHTML += `<button onclick="location.reload()">Recommencer</button>`;
+  } else {
+    mrwhite.classList.add("hidden");
+    showOrder(); // continue la partie
+  }
+}
+
+// Overlay rapide
+function overlayMsg(text,sound){
+  const overlay = document.createElement("div");
+  overlay.style.position="fixed";
+  overlay.style.inset=0;
+  overlay.style.background="rgba(0,0,0,0.7)";
+  overlay.style.color="white";
+  overlay.style.fontSize="28px";
+  overlay.style.display="flex";
+  overlay.style.justifyContent="center";
+  overlay.style.alignItems="center";
+  overlay.innerText=text;
+  document.body.appendChild(overlay);
+  sound.play();
+  setTimeout(()=>overlay.remove(),3000);
+}
+
+// Vérification victoire Civils / Undercover
+function checkWin(){
+  let c=0,u=0;
+  alive.forEach(p=>{let r=roles[players.indexOf(p)]; if(r=="Civil")c++; if(r=="Undercover")u++;});
+  if(u===0){result.innerHTML=`<h2>🎉 Victoire des Civils</h2><button onclick="location.reload()">Recommencer</button>`; showConfetti(); return true;}
+  if(c===0){result.innerHTML=`<h2>😈 Victoire des Undercover</h2><button onclick="location.reload()">Recommencer</button>`; showConfetti(); return true;
+  }
+  return false;
+}
+</script>
+
+</body>
+</html>
